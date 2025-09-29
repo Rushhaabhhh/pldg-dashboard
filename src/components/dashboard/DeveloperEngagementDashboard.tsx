@@ -1,6 +1,6 @@
 'use client';
 
-import * as React from 'react';
+import React, { useMemo } from 'react';
 import { useDashboardSystemContext } from '@/context/DashboardSystemContext';
 import ExecutiveSummary from './ExecutiveSummary';
 import { ActionableInsights } from './ActionableInsights';
@@ -11,86 +11,48 @@ import TopPerformersTable from './TopPerformersTable';
 import { LoadingSpinner } from '../ui/loading';
 import { Card, CardHeader, CardTitle, CardContent } from '../ui/card';
 import { Button } from '../ui/button';
-import { RefreshCw } from 'lucide-react';
+import { RefreshCw, Database, FileText, Cloud } from 'lucide-react';
 import { enhanceTechPartnerData } from '@/lib/utils';
-import { useEffect, useState } from 'react';
-import Papa, { ParseResult, ParseConfig, ParseError, Parser } from 'papaparse';
-import { processData } from '@/lib/data-processing';
-import { EngagementData } from '@/types/dashboard';
-import normalizeEngagementData from '@/lib/formatDBData';
+import { CohortSelector } from './CohortSelector';
+import { COHORT_DATA } from '@/types/cohort';
 
 export default function DeveloperEngagementDashboard() {
-  const { data, isLoading, isError, refresh, lastUpdated, isFetching } = useDashboardSystemContext();
-  const [csvData, setCsvData] = useState<EngagementData[]>([]);
-  const [isLoadingCSV, setIsLoadingCSV] = useState(true);
-  const [errorCSV, setErrorCSV] = useState<string | null>(null);
-  
-  
+  const {
+    data: processedData,
+    isLoading,
+    isError,
+    error,
+    refresh,
+    lastUpdated,
+    isFetching,
+    selectedCohort,
+    setSelectedCohort,
+    currentAdapter,
+    switchAdapter,
+    adapterHealth
+  } = useDashboardSystemContext();
 
-  useEffect(() => {
-    async function loadCSVData() {
-      try {
-        console.log('Loading CSV data...');
-        const response = await fetch('/api/cohort');
-
-
-        const rawData: Record<string, any>[] = await response.json();
-
-         // Normalize each entry
-        const cleanedData: EngagementData[] = rawData.map(normalizeEngagementData);
-        console.log('CSV Text:', cleanedData);
-
-        setCsvData(cleanedData);
-        setIsLoadingCSV(false)
-        
-      } catch (error) {
-        console.error('Failed to load CSV:', error);
-        setErrorCSV(error instanceof Error ? error.message : 'Failed to load data');
-      }
-    }
-    loadCSVData();
-  }, []);
-
-  const processedData = csvData.length > 0 ? processData(csvData) : null;
-
-  const enhancedTechPartnerData = React.useMemo(() =>
+  const enhancedTechPartnerData = useMemo(() =>
     processedData?.techPartnerPerformance && processedData?.rawEngagementData
       ? enhanceTechPartnerData(processedData.techPartnerPerformance, processedData.rawEngagementData)
       : [],
-  [processedData?.techPartnerPerformance, processedData?.rawEngagementData]
-);
+    [processedData?.techPartnerPerformance, processedData?.rawEngagementData]
+  );
 
-  React.useEffect(() => {
-    console.log('Dashboard State:', {
-      hasData: !!processedData,
-      metrics: processedData ? {
-            contributors: processedData.activeContributors,
-            techPartners: processedData.programHealth.activeTechPartners,
-            engagementTrends: processedData.engagementTrends.length,
-            technicalProgress: processedData.technicalProgress.length,
-        techPartnerData: enhancedTechPartnerData
-      } : null,
-      isLoading,
-      isError,
-      isFetching,
-      lastUpdated: new Date(lastUpdated).toISOString()
-    });
-  }, [processedData, isLoading, isError, isFetching, lastUpdated, enhancedTechPartnerData]);
+  const getAdapterIcon = (adapter: string) => {
+    switch (adapter) {
+      case 'csv': return <FileText className="w-4 h-4" />;
+      case 'mongodb': return <Database className="w-4 h-4" />;
+      case 'storacha': return <Cloud className="w-4 h-4" />;
+      default: return <FileText className="w-4 h-4" />;
+    }
+  };
 
-  if (isLoadingCSV) {
-    return <div>Loading CSV data...</div>;
-  }
-
-  if (errorCSV || !processedData) {
-    return <div>Error: {errorCSV || 'No data available'}</div>;
-  }
-
-  if (!processedData && isLoading) {
+  if (isLoading) {
     return (
-      <div className="container mx-auto p-4">
-        <div className="h-[calc(100vh-200px)] flex items-center justify-center">
-          <LoadingSpinner />
-        </div>
+      <div className="flex flex-col items-center justify-center h-[60vh]">
+        <LoadingSpinner />
+        <span className="ml-2 mt-2">Loading cohort data...</span>
       </div>
     );
   }
@@ -99,12 +61,12 @@ export default function DeveloperEngagementDashboard() {
     return (
       <div className="container mx-auto p-4">
         <div className="p-4 text-center text-red-600">
-          Unable to load dashboard data. Please try refreshing.
+          Error loading data: {error || 'No data available'}
           <Button
             variant="outline"
             size="sm"
             onClick={refresh}
-            className="mt-4 mx-auto"
+            className="mt-4 mx-auto block"
           >
             Retry
           </Button>
@@ -117,53 +79,92 @@ export default function DeveloperEngagementDashboard() {
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-6">
       {/* Header Section */}
       <header className="mb-8 bg-gradient-to-r from-indigo-700 to-purple-700 rounded-2xl p-6 text-white shadow-xl">
-        <div className="flex justify-between items-center">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4">
           <div>
             <h1 className="text-3xl font-bold">PLDG Developer Engagement</h1>
-            <p className="mt-2 text-indigo-100">Real-time insights and engagement metrics</p>
+            <p className="mt-2 text-indigo-100">
+              {COHORT_DATA[selectedCohort].name} - Real-time insights and engagement metrics
+            </p>
           </div>
-          <div className="flex items-center gap-4">
-            <span className="text-sm text-indigo-200">
-              Last updated: {new Date(lastUpdated).toLocaleString()}
-            </span>
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={refresh}
-              disabled={isFetching}
-              className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20"
-            >
-              <RefreshCw className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`} />
-              Refresh Data
-            </Button>
+          
+          <div className="flex flex-col lg:flex-row items-center gap-4">
+            {/* Cohort Selector */}
+            <CohortSelector
+              selectedCohort={selectedCohort}
+              onCohortChange={setSelectedCohort}
+            />
+
+            {/* Data Source Indicator */}
+            <div className="flex items-center gap-2 px-3 py-1 bg-white/10 rounded-lg">
+              {getAdapterIcon(currentAdapter)}
+              <span className="text-sm text-white/90 capitalize">{currentAdapter}</span>
+              <div className={`w-2 h-2 rounded-full ${adapterHealth[currentAdapter] ? 'bg-green-400' : 'bg-red-400'}`} />
+            </div>
+            
+            <div className="flex flex-col lg:flex-row items-center gap-4">
+              <span className="text-sm text-indigo-200">
+                Last updated: {new Date(lastUpdated).toLocaleString()}
+              </span>
+              
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={refresh}
+                disabled={isFetching}
+                className="flex items-center gap-2 bg-white/10 hover:bg-white/20 text-white border-white/20"
+              >
+                <RefreshCw
+                  className={`w-4 h-4 ${isFetching ? 'animate-spin' : ''}`}
+                />
+                <span className="text-xs">Refresh Data</span>
+              </Button>
+            </div>
           </div>
         </div>
+
+        {/* Adapter Switch Controls (Development only) */}
+        {process.env.NODE_ENV === 'development' && (
+          <div className="mt-4 flex gap-2">
+            {(['csv', 'mongodb', 'storacha'] as const).map((adapter) => (
+              <Button
+                key={adapter}
+                variant={currentAdapter === adapter ? "default" : "outline"}
+                size="sm"
+                onClick={() => switchAdapter(adapter)}
+                disabled={!adapterHealth[adapter]}
+                className="flex items-center gap-1 text-xs"
+              >
+                {getAdapterIcon(adapter)}
+                {adapter.toUpperCase()}
+                {!adapterHealth[adapter] && <span className="text-red-400">●</span>}
+              </Button>
+            ))}
+          </div>
+        )}
       </header>
 
-      {/* Top Section - Executive Summary */}
-      <div className="mb-6 bg-white rounded-lg shadow-md">
-        <ExecutiveSummary data={processedData} />
-      </div>
-
-      {/* Action Items Section */}
-      <div className="mb-8">
-        <ActionableInsights data={processedData} />
-      </div>
-
-      {/* Charts Section - Side by Side */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-8 mb-8">
-        <EngagementChart data={processedData.engagementTrends} />
-        <TechnicalProgressChart
-          data={processedData.technicalProgress}
-          githubData={{
-            inProgress: processedData.issueMetrics[0]?.open || 0,
-            done: processedData.issueMetrics[0]?.closed || 0
-          }}
-        />
-      </div>
-
-      {/* Full Width Sections */}
+      {/* Dashboard Content */}
       <div className="space-y-8">
+        {/* Executive Summary */}
+        <div className="bg-white rounded-lg shadow-md">
+          <ExecutiveSummary data={processedData} />
+        </div>
+
+        {/* Action Items */}
+        <ActionableInsights data={processedData} />
+
+        {/* Charts Section */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+          <EngagementChart data={processedData.engagementTrends} />
+          <TechnicalProgressChart
+            data={processedData.technicalProgress}
+            githubData={{
+              inProgress: processedData.issueMetrics[0]?.open || 0,
+              done: processedData.issueMetrics[0]?.closed || 0,
+            }}
+          />
+        </div>
+
         {/* Tech Partner Overview */}
         <TechPartnerChart data={enhancedTechPartnerData} />
 
@@ -179,4 +180,4 @@ export default function DeveloperEngagementDashboard() {
       </div>
     </div>
   );
-} 
+}

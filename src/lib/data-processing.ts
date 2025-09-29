@@ -6,6 +6,8 @@ import {
   GitHubData, IssueMetrics, EngagementTrend
 } from '@/types/dashboard';
 import * as utils from './utils';
+import { getCohortDataPath, COHORT_DATA, CohortId } from "@/types/cohort";
+import { dataService, DataService } from './data-service';
 
 // Types for CSV data structure
 interface WeeklyEngagementEntry {
@@ -628,9 +630,7 @@ function calculateTotalContributions(csvData: any[]): number {
 
 // Update the processData function to return all required ProcessedData fields
 export function processData(
-  csvData: any[],
-  githubData?: GitHubData | null
-): ProcessedData {
+csvData: any[], githubData?: GitHubData | null, cohortId?: string): ProcessedData {
   console.log('Processing data:', {
     recordCount: csvData.length,
     sampleRecord: csvData[0],
@@ -652,6 +652,19 @@ export function processData(
         .filter(Boolean)
     )
   );
+
+    // // Filter data by cohort if specified
+    // const cohortData = cohortId ? csvData.filter(row => row.cohortId === cohortId) : csvData;
+
+    // // Add cohort metadata to processed data
+    // const cohortInfo = cohortId ? COHORT_DATA[cohortId] : null;
+    
+    // // Filter data by date range if cohort is specified
+    // const cohortDataFiltered = cohortId ? csvData.filter(row => {
+    //   const weekDate = new Date(row['Program Week'].match(/\((.*?)\)/)?.[1] || '');
+    //   return weekDate >= new Date(cohortInfo!.startDate) && 
+    //          weekDate <= new Date(cohortInfo!.endDate);
+    // }) : csvData;
 
   return {
     weeklyChange: calculateWeeklyChange(csvData),
@@ -850,4 +863,14 @@ function processContributorData(csvData: Array<{
   });
 
   return Array.from(contributorMap.values());
+}
+
+export async function loadCohortData(cohortId: CohortId): Promise<string> {
+  try {
+    console.log(`Loading cohort ${cohortId} data using current adapter: ${dataService.getCurrentAdapter()}`);
+    return await dataService.loadCohortData(cohortId);
+  } catch (error) {
+    console.error(`Error loading cohort ${cohortId} data:`, error);
+    throw error;
+  }
 }
